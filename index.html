@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Calculadora de Condutor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <form class="login-container" id="form-condutor" onsubmit="return false;">
+        <h2>Calculadora de Condutor</h2>
+        <label for="tipo-entrada">Tipo de entrada:</label>
+        <select id="tipo-entrada" onchange="alternarEntrada()">
+            <option value="corrente">Corrente (A)</option>
+            <option value="potencia">Potência (W)</option>
+        </select>
+
+        <div id="div-corrente">
+            <label for="corrente">Corrente (A):</label>
+            <input type="number" id="corrente" min="0" step="any">
+        </div>
+
+        <div id="div-potencia" class="hidden">
+            <label for="potencia">Potência (W):</label>
+            <input type="number" id="potencia" min="0" step="any">
+            <label for="tensao">Tensão (V):</label>
+            <input type="number" id="tensao" min="0" step="any">
+        </div>
+
+        <label for="tipo-circuito">Tipo de circuito:</label>
+        <select id="tipo-circuito">
+            <option value="iluminacao">Iluminação</option>
+            <option value="tomada">Tomada</option>
+        </select>
+
+        <label for="qtd-circuitos">Quantidade de circuitos por eletroduto (1 a 4):</label>
+        <input type="number" id="qtd-circuitos" min="1" max="4" oninput="if(this.value > 4) this.value = 4;" />
+
+        <label for="validar-secao">Deseja validar uma seção existente?</label>
+        <select id="validar-secao" onchange="alternarValidacao()">
+            <option value="nao">Não</option>
+            <option value="sim">Sim</option>
+        </select>
+
+        <div id="div-secao" class="hidden">
+            <label for="secao-usuario">Seção do fio (mm²):</label>
+            <input type="number" id="secao-usuario" min="0" step="any" />
+        </div>
+
+        <button type="button" onclick="calcular()">Calcular</button>
+        <div class="resultado" id="resultado"></div>
+    </form>
+    <script>
+        function alternarEntrada() {
+            const tipo = document.getElementById('tipo-entrada').value;
+            document.getElementById('div-corrente').classList.toggle('hidden', tipo !== 'corrente');
+            document.getElementById('div-potencia').classList.toggle('hidden', tipo !== 'potencia');
+        }
+        function alternarValidacao() {
+            const val = document.getElementById('validar-secao').value;
+            document.getElementById('div-secao').classList.toggle('hidden', val !== 'sim');
+        }
+
+        // Dados da tabela
+        const tabela = [
+            { secao: 1.5, circuitos: {1: 15, 2: 10, 3: 10, 4: 0} },
+            { secao: 2.5, circuitos: {1: 20, 2: 15, 3: 15, 4: 15} },
+            { secao: 4,   circuitos: {1: 30, 2: 25, 3: 20, 4: 20} },
+            { secao: 6,   circuitos: {1: 40, 2: 30, 3: 25, 4: 25} },
+            { secao: 10,  circuitos: {1: 50, 2: 40, 3: 40, 4: 35} },
+            { secao: 16,  circuitos: {1: 70, 2: 60, 3: 50, 4: 40} },
+            { secao: 25,  circuitos: {1: 100, 2: 70, 3: 70, 4: 60} },
+            { secao: 35,  circuitos: {1: 125, 2: 100, 3: 70, 4: 70} },
+            { secao: 50,  circuitos: {1: 150, 2: 100, 3: 100, 4: 90} },
+            { secao: 70,  circuitos: {1: 150, 2: 150, 3: 125, 4: 125} },
+            { secao: 95,  circuitos: {1: 225, 2: 150, 3: 150, 4: 150} },
+            { secao: 120, circuitos: {1: 250, 2: 200, 3: 150, 4: 150} }
+        ];
+        const disjuntores = [10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160, 200, 250, 300, 400];
+
+        function calcularCorrente(potencia, tensao) {
+            if (tensao <= 0) return -1;
+            return potencia / tensao;
+        }
+
+        function obterCapacidadePorCircuito(condutor, qtd_circuitos) {
+            return condutor.circuitos[qtd_circuitos] || 0;
+        }
+
+        function selecionarSecao(corrente, tipo, qtd_circuitos) {
+            tipo = tipo.toLowerCase();
+            const secao_minima = {"iluminacao": 1.5, "tomada": 2.5}[tipo] || -1;
+            if (secao_minima === -1) return -1;
+            for (const condutor of tabela) {
+                const capacidade = obterCapacidadePorCircuito(condutor, qtd_circuitos);
+                if (capacidade === 0) continue;
+                if (corrente <= capacidade && condutor.secao >= secao_minima) {
+                    return condutor.secao;
+                }
+            }
+            return -1;
+        }
+
+        function selecionarDisjuntor(corrente) {
+            for (const d of disjuntores) {
+                if (corrente <= d) return d;
+            }
+            return -1;
+        }
+
+        function verificarSecaoValida(corrente, secao, tipo, qtd_circuitos) {
+            tipo = tipo.toLowerCase();
+            const secao_minima = {"iluminacao": 1.5, "tomada": 2.5}[tipo] || 0;
+            if (secao < secao_minima) return false;
+            for (const condutor of tabela) {
+                if (Math.abs(condutor.secao - secao) < 0.01) {
+                    const capacidade = obterCapacidadePorCircuito(condutor, qtd_circuitos);
+                    return capacidade !== 0 && corrente <= capacidade;
+                }
+            }
+            return false;
+        }
+
+        function calcular() {
+            const tipoEntrada = document.getElementById('tipo-entrada').value;
+            let corrente = 0;
+            let resultado = "";
+
+            if (tipoEntrada === "corrente") {
+                corrente = parseFloat(document.getElementById('corrente').value);
+                if (!(corrente > 0)) {
+                    document.getElementById('resultado').innerText = "Corrente inválida.";
+                    return;
+                }
+            } else {
+                const potencia = parseFloat(document.getElementById('potencia').value);
+                const tensao = parseFloat(document.getElementById('tensao').value);
+                corrente = calcularCorrente(potencia, tensao);
+                if (!(corrente > 0)) {
+                    document.getElementById('resultado').innerText = "Valores inválidos.";
+                    return;
+                }
+                resultado += `Corrente calculada: ${corrente.toFixed(2)} A\n`;
+            }
+
+            const tipo = document.getElementById('tipo-circuito').value;
+            const qtd_circuitos = parseInt(document.getElementById('qtd-circuitos').value);
+            if (qtd_circuitos < 1 || qtd_circuitos > 4) {
+                document.getElementById('resultado').innerText = "Quantidade de circuitos inválida.";
+                return;
+            }
+
+            const opcao_validar = document.getElementById('validar-secao').value;
+            if (opcao_validar === "sim") {
+                const secao_usuario = parseFloat(document.getElementById('secao-usuario').value);
+                if (verificarSecaoValida(corrente, secao_usuario, tipo, qtd_circuitos)) {
+                    resultado += `A seção ${secao_usuario.toFixed(1)} mm² é adequada.`;
+                } else {
+                    resultado += `A seção ${secao_usuario.toFixed(1)} mm² NÃO é adequada.`;
+                }
+            } else {
+                const secao = selecionarSecao(corrente, tipo, qtd_circuitos);
+                if (secao === -1) {
+                    resultado += "Corrente muito alta ou tipo de circuito inválido.\n";
+                } else {
+                    resultado += `Seção mínima recomendada: ${secao.toFixed(1)} mm²\n`;
+                }
+                const disjuntor = selecionarDisjuntor(corrente);
+                if (disjuntor === -1) {
+                    resultado += "Não há disjuntor adequado.";
+                } else {
+                    resultado += `Disjuntor recomendado: ${disjuntor} A`;
+                }
+            }
+            document.getElementById('resultado').innerText = resultado;
+        }
+    </script>
+</body>
+</html>
